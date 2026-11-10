@@ -1,0 +1,149 @@
+<!doctype html>
+<!--
+  app/static/index.html
+
+  PURPOSE: The structure (skeleton) of the CyberGPT web page. It only says WHAT is on the
+  page. Colours and layout live in style.css, and behaviour (sending messages, streaming
+  the answer, mode buttons) lives in app.js.
+
+  The empty containers below (modes, suggestions, thread...) are filled in by app.js
+  after the page loads, using data from our server.
+-->
+<html lang="en" data-theme="cyan">
+<head>
+  <meta charset="utf-8">
+  <!-- Makes the page fit phone screens instead of showing a tiny desktop page. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#080d16">
+  <title>CyberGPT</title>
+  <meta name="description" content="CyberGPT is a cybersecurity copilot that separates what is known from what is guessed.">
+
+  <!-- The tab icon, drawn inline so we need no image file. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3 5 7.5v8c0 7 4.6 11.4 11 13.5 6.4-2.1 11-6.5 11-13.5v-8z' fill='%233fd2f2'/%3E%3C/svg%3E">
+
+  <!--
+    Fonts: IBM Plex Sans (text) and IBM Plex Mono (code), loaded free from Google Fonts.
+    If you are offline the page still works; the browser just uses a similar system font.
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!--
+    Icon sprite: every icon on the page is drawn once here, then reused with
+    <use href="#i-name">. This keeps the icons crisp at any size and avoids image files.
+  -->
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-mark" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8 7.5 9.5 4.4-1.5 7.5-4.9 7.5-9.5V6z"/><path d="m9.5 10.5 2.5 2-2.5 2M13.5 15h2.5"/></symbol>
+    <symbol id="i-learn" viewBox="0 0 24 24"><path d="M3 5.5c2.5-1 5.5-1 9 1 3.5-2 6.5-2 9-1v13c-2.5-1-5.5-1-9 1-3.5-2-6.5-2-9-1z"/><path d="M12 6.5v13"/></symbol>
+    <symbol id="i-analyze" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5.5 5.5"/></symbol>
+    <symbol id="i-pentest" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"/><path d="M12 2.5v5M12 16.5v5M2.5 12h5M16.5 12h5"/></symbol>
+    <symbol id="i-defend" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8 7.5 9.5 4.4-1.5 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></symbol>
+    <symbol id="i-report" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 16.5h4"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24"><path d="M20 11.5 12 19.5a5 5 0 0 1-7-7l8.5-8.5a3.2 3.2 0 0 1 4.5 4.5L9.5 17a1.4 1.4 0 0 1-2-2L15 7.5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-retry" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v4.5h-4.5"/></symbol>
+    <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></symbol>
+  </svg>
+
+  <!-- Soft background glow and dot pattern (purely decorative; hidden from screen readers). -->
+  <div class="bg" aria-hidden="true"></div>
+
+  <!--
+    data-state switches the whole layout:
+      "home" = the welcome screen with the big centered message box
+      "chat" = a conversation, with the message box fixed at the bottom
+    app.js changes this value; style.css reacts to it.
+  -->
+  <div class="app" id="app" data-state="home">
+
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="CyberGPT home">
+        <span class="brand-mark"><svg class="icon"><use href="#i-mark"/></svg></span>
+        <span class="brand-name">CyberGPT</span>
+      </a>
+
+      <div class="topbar-spacer"></div>
+
+      <!-- Shows whether the AI model is reachable. app.js updates it every 15 seconds. -->
+      <div class="status" id="status" data-state="checking">
+        <span class="dot"></span>
+        <span class="status-text" id="statusText">Checking model</span>
+      </div>
+
+      <!-- Accent colour choices. The choice is remembered in your browser. -->
+      <div class="themes" id="themes" role="group" aria-label="Accent colour">
+        <button type="button" class="swatch" data-theme-choice="cyan" aria-label="Cyan" title="Cyan"></button>
+        <button type="button" class="swatch" data-theme-choice="green" aria-label="Green" title="Green"></button>
+        <button type="button" class="swatch" data-theme-choice="violet" aria-label="Violet" title="Violet"></button>
+        <button type="button" class="swatch" data-theme-choice="amber" aria-label="Amber" title="Amber"></button>
+      </div>
+
+      <button type="button" class="btn-ghost" id="newChat">
+        <svg class="icon"><use href="#i-plus"/></svg><span>New chat</span>
+      </button>
+    </header>
+
+    <main class="stage">
+
+      <!-- The welcome text, only visible in the "home" state. -->
+      <section class="hero">
+        <h1 class="hero-title">CyberGPT</h1>
+        <p class="hero-sub">Your cybersecurity copilot</p>
+        <p class="hero-note">Every answer separates what is known from what is guessed.</p>
+      </section>
+
+      <!-- The conversation. app.js adds messages inside threadInner. -->
+      <section class="thread" id="thread" aria-label="Conversation">
+        <div class="thread-inner" id="threadInner"></div>
+      </section>
+
+      <!-- The message box, mode buttons and example questions. -->
+      <div class="dock">
+        <form class="composer" id="composer" autocomplete="off">
+          <label class="sr-only" for="input">Message CyberGPT</label>
+          <textarea id="input" rows="1" spellcheck="true" placeholder="Ask anything about cybersecurity..."></textarea>
+
+          <div class="composer-bar">
+            <!-- Disabled on purpose: evidence upload is built in a later step. -->
+            <button type="button" class="tool" id="attach" disabled title="Evidence upload arrives in a later step">
+              <svg class="icon"><use href="#i-clip"/></svg>
+              <span class="tool-label">Upload evidence</span>
+              <span class="tag">soon</span>
+            </button>
+
+            <span class="hint" id="hint">Enter sends. Shift+Enter adds a line.</span>
+
+            <button type="submit" class="send" id="send" aria-label="Send message" disabled>
+              <svg class="icon"><use href="#i-send"/></svg>
+            </button>
+          </div>
+        </form>
+
+        <div class="modes" id="modes" role="radiogroup" aria-label="Mode"></div>
+        <p class="mode-hint" id="modeHint"></p>
+
+        <ul class="suggestions" id="suggestions"></ul>
+
+        <p class="fineprint">CyberGPT can be wrong. Check CVE IDs and commands before you rely on them, and only test systems you are authorized to assess.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Invisible text that screen readers announce ("CyberGPT is replying"). -->
+  <div class="sr-only" id="announce" role="status" aria-live="polite"></div>
+
+  <!-- Order matters: markdown.js must load before app.js, which uses it. -->
+  <script src="/static/markdown.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

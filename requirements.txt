@@ -1,0 +1,28 @@
+# .gitignore
+#
+# PURPOSE: Tells Git which files to NEVER upload to GitHub.
+#
+# MOST IMPORTANT LINE: ".env". That file holds your secret Groq API key. If a key is ever
+# uploaded to GitHub, treat it as stolen (bots scan GitHub for keys within minutes) and
+# create a new one. Keeping .env out of Git prevents that.
+
+# Secrets and local settings (use .env.example to show teammates which settings exist)
+.env
+.env.*
+!.env.example
+
+# Python's virtual environment folders (big, and each person creates their own)
+venv/
+.venv/
+env/
+
+# Files Python and pytest create automatically
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Editor and operating-system clutter
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

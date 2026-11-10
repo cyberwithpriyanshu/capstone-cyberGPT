@@ -1,0 +1,504 @@
+/*
+  app/static/style.css
+
+  PURPOSE: How the page LOOKS: colours, fonts, spacing, layout, animation.
+
+  HOW TO CHANGE THE LOOK: nearly every colour is a "variable" defined in the :root block
+  just below (for example --accent). Change a value there and the whole page follows.
+  The four accent colours (cyan, green, violet, amber) are chosen by the swatches at the
+  top right; each one simply overrides --accent.
+*/
+
+/* ================================================================
+   1. Design tokens (the variables everything else uses)
+   ================================================================ */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces: from the page background up to raised panels */
+  --ink: #080d16;
+  --panel: #0e1624;
+  --panel-2: #131d2f;
+  --line: #1e2b42;
+  --line-strong: #2c3d5c;
+
+  /* Text: main, secondary, and faint */
+  --text: #e3eaf6;
+  --dim: #93a2bd;
+  --faint: #7787a3;
+
+  /* The accent colour. --accent-rgb is the same colour as plain numbers, so we can
+     write rgba(var(--accent-rgb), 0.2) to get see-through versions of it. */
+  --accent: #3fd2f2;
+  --accent-rgb: 63, 210, 242;
+  --on-accent: #04141a; /* text colour used ON TOP of the accent */
+
+  /* Status colours */
+  --ok: #4ade80;
+  --warn: #f5b342;
+  --bad: #f87171;
+
+  /* Fonts (the second and third names are fallbacks if Plex fails to load) */
+  --font: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, Menlo, monospace;
+
+  /* Corner roundness. Different things get different values on purpose. */
+  --r-composer: 18px;
+  --r-chip: 9px;
+  --r-control: 10px;
+  --r-code: 12px;
+}
+
+[data-theme="green"]  { --accent: #5de88a; --accent-rgb: 93, 232, 138; }
+[data-theme="violet"] { --accent: #a995ff; --accent-rgb: 169, 149, 255; }
+[data-theme="amber"]  { --accent: #ffb44d; --accent-rgb: 255, 180, 77; }
+
+/* ================================================================
+   2. Base
+   ================================================================ */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--text);
+  font: 400 16px/1.6 var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+
+/* Thin, quiet scrollbars */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+
+/* A clear outline for keyboard users (Tab key). Mouse users do not see it. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Text that only screen readers see */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* The hidden icon sprite */
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* Every icon: drawn with strokes in the current text colour */
+.icon {
+  width: 1.15em; height: 1.15em; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* ================================================================
+   3. Background (soft glow + faint dot pattern)
+   ================================================================ */
+.bg {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(56rem 34rem at 50% -10%, rgba(var(--accent-rgb), 0.12), transparent 68%);
+}
+.bg::before {
+  content: ""; position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(147, 162, 189, 0.16) 1px, transparent 1.3px);
+  background-size: 26px 26px;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 28%, #000 0%, transparent 72%);
+  mask-image: radial-gradient(ellipse at 50% 28%, #000 0%, transparent 72%);
+}
+
+/* ================================================================
+   4. Page frame
+   ================================================================ */
+.app {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column;
+  height: 100vh; height: 100dvh; /* dvh = correct height on phones with moving toolbars */
+}
+
+.stage {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column; align-items: center;
+}
+
+/* ---- the top bar ---- */
+.topbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px clamp(14px, 3vw, 28px);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+.app[data-state="chat"] .topbar {
+  border-bottom-color: var(--line);
+  background: rgba(8, 13, 22, 0.72);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.topbar-spacer { flex: 1; }
+
+.brand {
+  display: inline-flex; align-items: center; gap: 10px;
+  color: var(--text); text-decoration: none;
+  font-weight: 600; letter-spacing: -0.01em;
+}
+.brand-mark {
+  display: grid; place-items: center; width: 34px; height: 34px;
+  border: 1px solid var(--line-strong); border-radius: 9px;
+  background: var(--panel); color: var(--accent);
+}
+.brand-mark .icon { width: 20px; height: 20px; }
+
+/* ---- the model status pill ---- */
+.status {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px;
+  background: rgba(14, 22, 36, 0.7);
+  font: 500 12.5px/1 var(--mono); color: var(--dim);
+}
+.status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+.status-text { max-width: min(40vw, 260px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status[data-state="ok"] .dot { background: var(--ok); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); animation: pulse 2.4s ease-out infinite; }
+.status[data-state="demo"] .dot { background: var(--accent); }
+.status[data-state="degraded"] .dot { background: var(--warn); }
+.status[data-state="offline"] .dot { background: var(--bad); }
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+  70%  { box-shadow: 0 0 0 7px rgba(74, 222, 128, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+}
+
+/* ---- accent colour swatches ---- */
+.themes { display: inline-flex; gap: 7px; padding: 0 4px; }
+.swatch {
+  width: 18px; height: 18px; padding: 0; border-radius: 50%;
+  border: 2px solid transparent; background: var(--sw);
+  box-shadow: 0 0 0 1px var(--line-strong);
+  transition: transform 0.15s;
+}
+.swatch:hover { transform: scale(1.12); }
+.swatch[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 2px var(--text); }
+.swatch[data-theme-choice="cyan"]   { --sw: #3fd2f2; }
+.swatch[data-theme-choice="green"]  { --sw: #5de88a; }
+.swatch[data-theme-choice="violet"] { --sw: #a995ff; }
+.swatch[data-theme-choice="amber"]  { --sw: #ffb44d; }
+
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-control);
+  background: transparent; color: var(--dim); font-size: 0.9rem; font-weight: 500;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+.btn-ghost:hover { color: var(--text); border-color: var(--line-strong); background: rgba(19, 29, 47, 0.6); }
+
+/* ================================================================
+   5. Home state (welcome screen) and chat state (conversation)
+   ================================================================ */
+.app[data-state="home"] .thread { display: none; }
+.app[data-state="home"] .stage { overflow-y: auto; padding: 0 clamp(16px, 4vw, 32px) 5vh; }
+/* margin:auto above and below centers the content, but still lets it scroll on short screens */
+.app[data-state="home"] .hero { margin-top: auto; }
+.app[data-state="home"] .dock { margin-bottom: auto; }
+
+.app[data-state="chat"] .hero,
+.app[data-state="chat"] .suggestions,
+.app[data-state="chat"] .mode-hint { display: none; }
+.app[data-state="chat"] .thread { display: block; flex: 1; }
+.app[data-state="chat"] .dock {
+  width: min(100%, 808px);
+  padding: 0 clamp(12px, 3vw, 24px) 14px;
+}
+
+/* ---- the welcome text ---- */
+.hero { text-align: center; padding-top: 4vh; }
+.hero-title {
+  margin: 0;
+  font-size: clamp(2.7rem, 8vw, 4.8rem);
+  font-weight: 600; letter-spacing: -0.04em; line-height: 1;
+  text-shadow: 0 0 48px rgba(var(--accent-rgb), 0.32);
+}
+/* The blinking terminal cursor after the name: the one memorable detail */
+.hero-title::after {
+  content: ""; display: inline-block;
+  width: 0.34em; height: 0.78em; margin-left: 0.1em;
+  background: var(--accent); vertical-align: -0.02em;
+  animation: blink 1.1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+.hero-sub { margin: 0.9rem 0 0; font-size: 1.25rem; color: var(--dim); }
+.hero-note { margin: 0.7rem auto 0; max-width: 36ch; font-size: 0.95rem; color: var(--faint); text-wrap: balance; }
+
+/* ================================================================
+   6. The message box ("composer")
+   ================================================================ */
+.dock { width: min(100%, 760px); flex: none; }
+
+.composer {
+  position: relative; margin-top: 30px;
+  padding: 14px 14px 10px;
+  border: 1px solid var(--line-strong); border-radius: var(--r-composer);
+  background: linear-gradient(180deg, rgba(19, 29, 47, 0.94), rgba(14, 22, 36, 0.94));
+  box-shadow: 0 22px 50px -24px rgba(0, 0, 0, 0.8), 0 0 0 0 rgba(var(--accent-rgb), 0);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.app[data-state="chat"] .composer { margin-top: 10px; }
+.composer:focus-within {
+  border-color: rgba(var(--accent-rgb), 0.6);
+  box-shadow: 0 22px 50px -24px rgba(0, 0, 0, 0.8), 0 0 0 4px rgba(var(--accent-rgb), 0.12);
+}
+
+/* While CyberGPT is replying, a light travels around the edge of the box.
+   @property lets us animate the angle of the gradient. */
+@property --angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+.composer::before {
+  content: ""; position: absolute; inset: -1px; padding: 1px;
+  border-radius: inherit; pointer-events: none; opacity: 0;
+  transition: opacity 0.25s;
+  background: conic-gradient(from var(--angle), transparent 0deg, transparent 240deg, rgba(var(--accent-rgb), 0.95) 320deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.composer[data-busy="true"]::before { opacity: 1; animation: sweep 2.4s linear infinite; }
+@keyframes sweep { to { --angle: 360deg; } }
+
+.composer textarea {
+  display: block; width: 100%; min-height: 30px; max-height: 220px;
+  padding: 4px 4px 10px; border: 0; outline: 0; resize: none;
+  background: transparent; color: var(--text);
+  font: 400 1.05rem/1.55 var(--font); /* 16px or more stops iPhones zooming in */
+}
+.composer textarea::placeholder { color: var(--faint); }
+
+.composer-bar { display: flex; align-items: center; gap: 10px; }
+
+.tool {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 10px; border: 1px dashed var(--line-strong); border-radius: 8px;
+  background: transparent; color: var(--faint); font-size: 0.85rem;
+}
+.tool:disabled { cursor: not-allowed; opacity: 0.75; }
+.tag {
+  padding: 1px 6px; border-radius: 5px; background: var(--panel-2);
+  color: var(--dim); font: 500 11px/1.5 var(--mono);
+}
+
+.hint { flex: 1; min-width: 0; text-align: right; color: var(--faint); font-size: 0.82rem; }
+.hint[data-tone="warn"] { color: var(--warn); }
+
+.send {
+  display: grid; place-items: center; width: 40px; height: 40px; flex: none;
+  border: 0; border-radius: 12px;
+  background: var(--accent); color: var(--on-accent);
+  transition: filter 0.15s, transform 0.1s, background-color 0.15s, color 0.15s;
+}
+.send .icon { width: 20px; height: 20px; stroke-width: 2.2; }
+.send:hover:not(:disabled) { filter: brightness(1.1); }
+.send:active:not(:disabled) { transform: scale(0.95); }
+.send:disabled { background: var(--panel-2); color: var(--faint); cursor: not-allowed; }
+.send[data-mode="stop"] { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1.5px rgba(var(--accent-rgb), 0.7); }
+
+/* ================================================================
+   7. Mode buttons, hint line, example questions, small print
+   ================================================================ */
+.modes { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 14px; border: 1px solid var(--line); border-radius: var(--r-chip);
+  background: rgba(14, 22, 36, 0.6); color: var(--dim);
+  font-size: 0.92rem; font-weight: 500; line-height: 1;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+.chip:hover { color: var(--text); border-color: var(--line-strong); }
+.chip[aria-checked="true"] {
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.09);
+}
+
+.mode-hint { min-height: 1.5em; margin: 12px 0 0; text-align: center; color: var(--faint); font-size: 0.92rem; }
+
+/* Example questions: a quiet list of prompt lines, not a grid of cards */
+.suggestions { margin: 20px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.suggestions li { border-bottom: 1px solid var(--line); }
+.suggestions button {
+  display: flex; align-items: baseline; gap: 12px; width: 100%;
+  padding: 13px 6px; border: 0; background: none; text-align: left;
+  color: var(--dim); font-size: 0.98rem; line-height: 1.45;
+  transition: color 0.15s, background-color 0.15s;
+}
+.suggestions button::before { content: ">"; flex: none; color: var(--faint); font-family: var(--mono); transition: color 0.15s; }
+.suggestions button:hover { color: var(--text); background: rgba(var(--accent-rgb), 0.05); }
+.suggestions button:hover::before { color: var(--accent); }
+
+.fineprint { margin: 16px 0 0; text-align: center; color: var(--faint); font-size: 0.8rem; line-height: 1.5; text-wrap: balance; }
+.app[data-state="chat"] .fineprint { margin-top: 10px; }
+
+/* ================================================================
+   8. The conversation
+   ================================================================ */
+.thread {
+  width: 100%; min-height: 0; overflow-y: auto;
+  padding: 0 clamp(12px, 3vw, 24px);
+}
+.thread-inner {
+  display: flex; flex-direction: column; gap: 28px;
+  width: min(100%, 760px); margin: 0 auto; padding: 22px 0 30px;
+}
+
+/* what the user wrote */
+.msg.user { align-self: flex-end; max-width: min(90%, 640px); }
+.msg.user .bubble {
+  padding: 10px 15px; white-space: pre-wrap; overflow-wrap: anywhere;
+  border: 1px solid rgba(var(--accent-rgb), 0.3); border-radius: 16px 16px 4px 16px;
+  background: rgba(var(--accent-rgb), 0.11);
+}
+
+/* what CyberGPT answered */
+.msg.bot { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 14px; align-items: start; }
+.avatar {
+  display: grid; place-items: center; width: 34px; height: 34px;
+  border: 1px solid var(--line-strong); border-radius: 9px;
+  background: var(--panel); color: var(--accent);
+}
+.avatar .icon { width: 20px; height: 20px; }
+
+.meta { display: flex; align-items: center; gap: 10px; margin: 4px 0 6px; font-size: 0.86rem; }
+.who { font-weight: 600; }
+.mode-tag {
+  padding: 2px 8px; border: 1px solid rgba(var(--accent-rgb), 0.28); border-radius: 6px;
+  background: rgba(var(--accent-rgb), 0.1); color: var(--accent);
+  font: 500 12px/1.5 var(--mono);
+}
+
+/* the formatted text of an answer */
+.prose { color: var(--text); line-height: 1.7; overflow-wrap: anywhere; }
+.prose > :first-child { margin-top: 0; }
+.prose > :last-child { margin-bottom: 0; }
+.prose p { margin: 0.75em 0; }
+.prose h3, .prose h4, .prose h5 { margin: 1.5em 0 0.4em; font-weight: 600; line-height: 1.35; }
+.prose h3 { font-size: 1.14rem; }
+.prose h4 { font-size: 1.04rem; }
+.prose h5 { font-size: 0.97rem; color: var(--dim); }
+.prose ul, .prose ol { margin: 0.6em 0; padding-left: 1.45em; }
+.prose li { margin: 0.28em 0; }
+.prose li::marker { color: var(--accent); }
+.prose li > ul, .prose li > ol { margin: 0.25em 0; }
+.prose blockquote {
+  margin: 0.9em 0; padding: 0.1em 0 0.1em 14px;
+  border-left: 3px solid rgba(var(--accent-rgb), 0.5); color: var(--dim);
+}
+.prose hr { margin: 1.4em 0; border: 0; border-top: 1px solid var(--line); }
+.prose a { color: var(--accent); text-underline-offset: 3px; }
+.prose strong { font-weight: 600; }
+.prose code {
+  padding: 0.12em 0.4em; border: 1px solid var(--line); border-radius: 6px;
+  background: rgba(147, 162, 189, 0.12);
+  font: 400 0.88em/1.4 var(--mono);
+}
+
+/* tables */
+.table-wrap { margin: 0.9em 0; overflow-x: auto; border: 1px solid var(--line-strong); border-radius: 10px; }
+.prose table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.prose th, .prose td { padding: 9px 13px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.prose th { background: var(--panel-2); font-weight: 600; white-space: nowrap; }
+.prose tr:last-child td { border-bottom: 0; }
+
+/* code blocks */
+.codeblock { margin: 0.95em 0; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--r-code); background: #060a12; }
+.codeblock-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 8px 6px 14px; border-bottom: 1px solid var(--line);
+  background: rgba(19, 29, 47, 0.85); color: var(--dim);
+  font: 500 12px/1.4 var(--mono);
+}
+.copy-code {
+  padding: 4px 10px; border: 1px solid transparent; border-radius: 7px;
+  background: none; color: var(--dim); font: 500 12px/1.4 var(--mono);
+  transition: color 0.15s, border-color 0.15s;
+}
+.copy-code:hover { color: var(--text); border-color: var(--line-strong); }
+.copy-code[data-copied="true"] { color: var(--accent); }
+.codeblock pre { margin: 0; padding: 14px 16px; overflow-x: auto; }
+.prose .codeblock code {
+  display: block; padding: 0; border: 0; background: none;
+  color: #cfe0ff; font: 400 0.875rem/1.65 var(--mono); white-space: pre; tab-size: 2;
+}
+
+/* the blinking cursor shown while an answer is still being written */
+.prose.streaming > :last-child:not(.codeblock):not(.table-wrap)::after,
+.prose.streaming > .codeblock:last-child code::after {
+  content: ""; display: inline-block;
+  width: 0.55ch; height: 1.05em; margin-left: 3px; vertical-align: -0.18em;
+  background: var(--accent); animation: blink 1s steps(1) infinite;
+}
+
+/* the three dots shown before the first word arrives */
+.typing { display: inline-flex; gap: 5px; padding: 10px 0; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); animation: bounce 1.2s ease-in-out infinite; }
+.typing i:nth-child(2) { animation-delay: 0.15s; }
+.typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes bounce { 0%, 60%, 100% { transform: translateY(0); opacity: 0.5; } 30% { transform: translateY(-5px); opacity: 1; } }
+
+/* buttons under an answer (appear when you point at it) */
+.actions { display: flex; gap: 6px; margin-top: 8px; opacity: 0; transition: opacity 0.15s; }
+.msg.bot:hover .actions, .msg.bot:focus-within .actions { opacity: 1; }
+.act {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 9px; border: 1px solid transparent; border-radius: 8px;
+  background: none; color: var(--faint); font-size: 0.82rem; font-weight: 500;
+  transition: color 0.15s, border-color 0.15s;
+}
+.act:hover { color: var(--text); border-color: var(--line-strong); }
+.act[data-copied="true"] { color: var(--accent); }
+
+.note { margin: 10px 0 0; color: var(--faint); font-size: 0.86rem; }
+
+/* error message with a Retry button */
+.error-note {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  margin-top: 12px; padding: 12px 14px;
+  border: 1px solid rgba(248, 113, 113, 0.4); border-radius: 12px;
+  background: rgba(248, 113, 113, 0.08); color: #fecaca; font-size: 0.93rem; line-height: 1.5;
+}
+.error-note .act { color: #fecaca; border-color: rgba(248, 113, 113, 0.4); }
+.error-note .act:hover { border-color: #fecaca; }
+
+/* ================================================================
+   9. Small screens
+   ================================================================ */
+@media (max-width: 640px) {
+  .btn-ghost span { display: none; }
+  .btn-ghost { padding: 8px 10px; }
+  .hint { display: none; }
+  .composer-bar { justify-content: space-between; }
+  .modes { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; padding-bottom: 4px; }
+  .chip { flex: none; }
+  .msg.bot { grid-template-columns: 28px minmax(0, 1fr); gap: 10px; }
+  .avatar { width: 28px; height: 28px; }
+  .avatar .icon { width: 17px; height: 17px; }
+  .actions { opacity: 1; }
+  /* Once a chat has started, give the screen back to the conversation. */
+  .app[data-state="chat"] .fineprint { display: none; }
+}
+@media (max-width: 480px) {
+  .status-text { display: none; }
+  .status { padding: 9px; }
+  .themes { gap: 5px; padding: 0; }
+  .swatch { width: 16px; height: 16px; }
+  .tool-label, .tag { display: none; }
+  .tool { padding: 8px; }
+}
+@media (hover: none) { .actions { opacity: 1; } }
+
+/* ================================================================
+   10. Respect people who turn animations off in their system settings
+   ================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .composer[data-busy="true"]::before { background: rgba(var(--accent-rgb), 0.7); }
+}
