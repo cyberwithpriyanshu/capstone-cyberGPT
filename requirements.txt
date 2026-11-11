@@ -1,13 +1,11 @@
-# Each line below is a "library" (code written by other people) that our project uses.
-# ">=" means "this version or newer". You install all of them with one command later.
+@"
+# requirements.txt
+# The Python libraries CyberGPT needs. Hosting services (like Render) read this file
+# and install every line when they build the site.
 
-# The web framework: lets us create web addresses like /chat and /health
 fastapi>=0.110
-# The web server that actually runs our FastAPI app
 uvicorn[standard]>=0.29
-# Lets our code send requests over the internet/network (we use it to talk to the AI model)
 httpx>=0.27
-# Checks that data has the right shape (FastAPI uses it to validate requests)
 pydantic>=2.6
-# Reads our settings from the .env file
 pydantic-settings>=2.2
+"@ | Set-Content -Encoding ascii requirements.txt
