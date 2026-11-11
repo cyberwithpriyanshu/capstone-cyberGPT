@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.routes import get_provider
+from app.config import Settings, get_settings
 from app.llm import LLMError
 from app.llm.fake import FakeProvider
 from app.main import app
@@ -26,6 +27,10 @@ from app.prompts import SYSTEM_PROMPT
 # receives the value we `yield` below. Code after `yield` runs when the test finishes.
 @pytest.fixture
 def client():
+    # Step 4: knowledge lookup OFF for these tests (the lookup is tested in test_rag_chat.py).
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None, llm_provider="fake", rag_enabled=False
+    )
     with TestClient(app) as c:
         yield c
     # Cleanup: remove any provider swap we did, so one test can't leak into the next.
@@ -123,11 +128,13 @@ def test_chat_returns_reply(client):
     r = client.post("/chat", json={"messages": [{"role": "user", "content": "What is SQLi?"}]})
 
     assert r.status_code == 200
-    assert r.json() == {
-        "reply": "SQL injection is...",
-        "model": "fake-model",
-        "provider": "fake",
-    }
+    body = r.json()
+    assert body["reply"] == "SQL injection is..."
+    assert body["model"] == "fake-model"
+    assert body["provider"] == "fake"
+    # Step 4: with the lookup switched off the reply says so and carries no sources.
+    assert body["knowledge"]["enabled"] is False
+    assert body["knowledge"]["sources"] == []
 
 
 def test_chat_prepends_system_prompt_and_keeps_history_order(client):
@@ -223,7 +230,9 @@ def test_stream_reports_model_failure_as_an_error_event(client):
     # INSIDE the stream. The UI watches for events of type "error".
     assert r.status_code == 200
     events = parse_sse(r.text)
-    assert events == [{"type": "error", "message": "model server down"}]
+    # Step 4: the stream always opens with a "sources" message, then the error follows.
+    assert events[0]["type"] == "sources"
+    assert events[1:] == [{"type": "error", "message": "model server down"}]
 
 
 def test_stream_uses_the_selected_mode_and_keeps_history_order(client):

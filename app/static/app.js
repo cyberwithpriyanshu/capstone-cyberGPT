@@ -317,7 +317,7 @@
     body.append(meta, prose, actions);
     root.append(avatar, body);
     dom.threadInner.appendChild(root);
-    return { root, body, prose, actions };
+    return { root, body, prose, actions, knowledge: null };
   }
 
   // Re-draws the answer at most once per screen refresh, however fast the words arrive.
@@ -329,6 +329,7 @@
       queued = false;
       const pinned = isPinnedToBottom();
       bot.prose.innerHTML = window.renderMarkdown(latest);
+      linkCitations(bot.prose, bot.knowledge, false);
       if (pinned) scrollToBottom();
     }
     return {
@@ -368,6 +369,187 @@
     bot.body.appendChild(box);
   }
 
+  // ----------------------------------------------------------------
+  // Sources and citations (NEW in Step 4)
+  // ----------------------------------------------------------------
+  // The server sends the knowledge-base passages the AI was given ("sources"). The AI marks
+  // the statements it took from them with [1], [2]... Two things happen on the page:
+  //   1. every [n] in the answer becomes a small clickable marker that jumps to source n;
+  //   2. under the answer we list the sources the answer actually CITED, as cards.
+  // Everything below builds the page with textContent / setAttribute (never as raw HTML) because
+  // source titles come from outside documents and must never be able to run as HTML.
+
+  const CITE = /\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\]/g;      // [1]  [12]  [1, 2]
+  const CITE_ANY = /\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\]/;
+
+  function sourceByNumber(knowledge, n) {
+    return knowledge && knowledge.sources.find((s) => s.n === n);
+  }
+
+  // The source numbers the answer cites, in order of first appearance. Numbers that match no
+  // source (the AI made one up) are ignored, so a fake citation never gets a card.
+  function citedNumbers(text, knowledge) {
+    const seen = [];
+    if (!knowledge) return seen;
+    for (const m of text.matchAll(CITE)) {
+      for (const part of m[1].split(",")) {
+        const n = Number(part);
+        if (sourceByNumber(knowledge, n) && seen.indexOf(n) === -1) seen.push(n);
+      }
+    }
+    return seen;
+  }
+
+  // Turn "[2]" in the already-rendered answer into small markers. Walks the TEXT of the
+  // answer only, and skips code blocks and links, so "arr[1]" in code is never touched.
+  // interactive=false while the answer is still streaming (the cards do not exist yet).
+  function linkCitations(prose, knowledge, interactive) {
+    if (!knowledge || !knowledge.sources.length) return;
+
+    const walker = document.createTreeWalker(prose, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!CITE_ANY.test(node.nodeValue)) return NodeFilter.FILTER_REJECT;
+        return node.parentElement.closest("code, pre, a, button")
+          ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+
+    for (const node of nodes) {
+      const text = node.nodeValue;
+      const out = document.createDocumentFragment();
+      let last = 0;
+      CITE.lastIndex = 0;
+      let m;
+      while ((m = CITE.exec(text)) !== null) {
+        const numbers = m[1].split(",").map((x) => Number(x));
+        if (!numbers.every((n) => sourceByNumber(knowledge, n))) continue; // not a real citation: leave as text
+        out.appendChild(document.createTextNode(text.slice(last, m.index)));
+        for (const n of numbers) out.appendChild(makeCite(knowledge, n, interactive));
+        last = m.index + m[0].length;
+      }
+      out.appendChild(document.createTextNode(text.slice(last)));
+      node.parentNode.replaceChild(out, node);
+    }
+  }
+
+  function makeCite(knowledge, n, interactive) {
+    const source = sourceByNumber(knowledge, n);
+    const el = make(interactive ? "button" : "span", "cite", String(n));
+    el.dataset.n = String(n);
+    if (interactive) {
+      el.type = "button";
+      el.setAttribute("aria-label", "Source " + n + ": " + source.title);
+    }
+    el.title = source.label + ": " + source.title;
+    return el;
+  }
+
+  // Only ever link to real web addresses.
+  function safeUrl(url) {
+    return /^https?:\/\//i.test(url || "") ? url : "";
+  }
+
+  function sourceCard(source) {
+    const card = make("li", "source");
+    card.dataset.n = String(source.n);
+    card.appendChild(make("span", "source-n", String(source.n)));
+
+    const main = make("div", "source-main");
+    const href = safeUrl(source.url);
+    let title;
+    if (href) {
+      title = make("a", "source-title", source.title);
+      title.href = href;
+      title.target = "_blank";
+      title.rel = "noopener noreferrer";
+    } else {
+      title = make("span", "source-title", source.title);
+    }
+    main.appendChild(title);
+
+    const meta = make("div", "source-meta");
+    meta.appendChild(make("span", "", source.label));
+    const tier = make("span", "tier", source.tier);
+    tier.dataset.tier = source.tier;
+    tier.title = source.tier === "authoritative"
+      ? "An official or primary source" : "A respected community-maintained source";
+    meta.appendChild(tier);
+    if (source.ref_id) meta.appendChild(make("span", "source-id", source.ref_id));
+    if (source.as_of) meta.appendChild(make("span", "", "as of " + source.as_of));
+    main.appendChild(meta);
+
+    if (source.excerpt) {
+      const details = make("details", "source-excerpt");
+      details.appendChild(make("summary", "", "Excerpt"));
+      details.appendChild(make("p", "", source.excerpt));
+      main.appendChild(details);
+    }
+    card.appendChild(main);
+    return card;
+  }
+
+  // The area under an answer: the cited sources, any identifier we could not find, and an
+  // honest note when the answer did not come from the knowledge base.
+  function addSources(bot, text, knowledge) {
+    if (!knowledge || !knowledge.enabled) return;
+
+    const cited = citedNumbers(text, knowledge);
+    const uncited = knowledge.sources.filter((s) => cited.indexOf(s.n) === -1);
+    const area = make("section", "sources");
+    area.setAttribute("aria-label", "Sources");
+
+    if (cited.length) {
+      const head = make("h4", "sources-head", "Sources");
+      head.appendChild(make("span", "sources-count", String(cited.length)));
+      if (knowledge.searched) head.title = "Searched for: " + knowledge.searched +
+        (knowledge.keywords ? "  |  AI keywords: " + knowledge.keywords : "");
+      area.appendChild(head);
+      const list = make("ol", "sources-list");
+      for (const n of cited) list.appendChild(sourceCard(sourceByNumber(knowledge, n)));
+      area.appendChild(list);
+    } else if (knowledge.sources.length) {
+      area.appendChild(make("p", "source-note",
+        "This answer didn't use the knowledge base, so it comes from the model's general knowledge."));
+    } else {
+      area.appendChild(make("p", "source-note",
+        "No matching sources in the knowledge base. This answer comes from the model's general knowledge."));
+    }
+
+    // Passages that were found but the answer did not cite: kept one click away, for transparency.
+    if (cited.length && uncited.length) {
+      const more = make("details", "sources-more");
+      more.appendChild(make("summary", "", "Also searched (" + uncited.length + ")"));
+      const list = make("ol", "sources-list");
+      for (const s of uncited) list.appendChild(sourceCard(s));
+      more.appendChild(list);
+      area.appendChild(more);
+    }
+
+    for (const id of knowledge.ids_not_found || []) {
+      area.appendChild(make("p", "source-warn",
+        id + " isn't in CyberGPT's sources, so it can't be confirmed here. That doesn't prove it doesn't exist."));
+    }
+
+    if (area.childNodes.length) bot.body.insertBefore(area, bot.actions);
+  }
+
+  // Clicking a [n] marker scrolls to that source card and highlights it briefly.
+  dom.threadInner.addEventListener("click", (e) => {
+    const cite = e.target.closest("button.cite");
+    if (!cite) return;
+    const area = cite.closest(".body").querySelector(".sources");
+    const card = area && area.querySelector('.source[data-n="' + cite.dataset.n + '"]');
+    if (!card) return;
+    const more = card.closest("details.sources-more");
+    if (more) more.open = true;
+    card.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    card.removeAttribute("data-flash");
+    void card.offsetWidth; // restart the animation if it is clicked twice
+    card.setAttribute("data-flash", "");
+  });
+
   // Copy buttons inside code blocks. One listener on the whole conversation handles them all,
   // including blocks that did not exist yet when the page loaded.
   dom.threadInner.addEventListener("click", async (e) => {
@@ -402,7 +584,7 @@
   }
 
   // Reads the streamed answer. `onToken` is called for every piece of text.
-  async function streamChat(signal, onToken) {
+  async function streamChat(signal, onToken, onSources) {
     let res;
     try {
       res = await fetch("/chat/stream", {
@@ -443,7 +625,8 @@
         let event;
         try { event = JSON.parse(block.slice(5)); } catch (e) { continue; }
 
-        if (event.type === "token") onToken(event.text);
+        if (event.type === "sources") onSources(event);
+        else if (event.type === "token") onToken(event.text);
         else if (event.type === "error") throw new ApiError(event.message, "model");
         else if (event.type === "done") finished = true;
       }
@@ -465,7 +648,7 @@
       throw new ApiError("Can't reach the CyberGPT server. Is it running?", "network");
     }
     if (!res.ok) throw new ApiError(await readHttpError(res), "http");
-    return (await res.json()).reply;
+    return await res.json(); // { reply, knowledge, ... }
   }
 
   // ----------------------------------------------------------------
@@ -505,15 +688,21 @@
 
     try {
       try {
-        await streamChat(controller.signal, (piece) => {
-          text += piece;
-          painter.schedule(text);
-        });
+        await streamChat(
+          controller.signal,
+          (piece) => {
+            text += piece;
+            painter.schedule(text);
+          },
+          (knowledge) => { bot.knowledge = knowledge; } // arrives before the first word
+        );
       } catch (err) {
         // If streaming itself was blocked and nothing arrived yet, quietly try the normal route.
         const streamingBlocked = err instanceof ApiError && err.kind !== "model" && text === "";
         if (!streamingBlocked) throw err;
-        text = await plainChat(controller.signal);
+        const data = await plainChat(controller.signal);
+        text = data.reply;
+        bot.knowledge = data.knowledge || null;
       }
     } catch (err) {
       if (err && err.name === "AbortError") {
@@ -532,6 +721,7 @@
     state.controller = null;
     bot.prose.classList.remove("streaming");
     bot.prose.innerHTML = text ? window.renderMarkdown(text) : "";
+    linkCitations(bot.prose, bot.knowledge, true);
     if (!text) bot.prose.remove();
 
     if (outcome === "error") {
@@ -541,6 +731,7 @@
       state.messages.push({ role: "assistant", content: text });
       // The note goes BEFORE the buttons row, so it sits right under the text.
       if (outcome === "stopped") bot.body.insertBefore(make("p", "note", "Reply stopped."), bot.actions);
+      addSources(bot, text, bot.knowledge);
       addReplyActions(bot, text);
     } else {
       bot.root.remove(); // stopped before anything arrived: leave no empty message behind

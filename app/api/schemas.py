@@ -56,10 +56,40 @@ class ChatRequest(BaseModel):
         return self
 
 
+class Source(BaseModel):
+    # One knowledge-base passage the AI was given. `n` is its citation number: when the
+    # answer says [2], it points at the source whose n is 2.
+    n: int
+    id: str
+    title: str
+    source: str  # short code: kev, attack or owasp
+    label: str  # human name: "CISA KEV", "MITRE ATT&CK", "OWASP Cheat Sheets"
+    tier: str  # "authoritative" or "community"
+    url: str  # the original page
+    license: str
+    as_of: str
+    ref_id: str  # official ID like CVE-2021-44228 (may be empty)
+    exact_id: bool  # True = the user named this ID and we matched it exactly
+    excerpt: str  # the start of the passage, for a quick look
+
+
+class SourcesInfo(BaseModel):
+    """Everything about the knowledge-base lookup for one question."""
+
+    enabled: bool = True  # False when RAG is switched off in .env
+    sources: list[Source] = []
+    # IDs the user mentioned that we have NO entry for. This does NOT prove they don't exist.
+    ids_not_found: list[str] = []
+    searched: str = ""  # the text we searched with (transparency: shown on the page)
+    keywords: str = ""  # the AI's suggested keywords, if rewriting ran
+
+
 class ChatResponse(BaseModel):
     reply: str  # the AI's answer
     model: str  # which model produced it
     provider: str  # which backend was used
+    # NEW in Step 4. Optional with a default, so older callers keep working.
+    knowledge: SourcesInfo = SourcesInfo()
 
 
 class ModeInfo(BaseModel):

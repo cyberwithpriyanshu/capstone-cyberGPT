@@ -1,20 +1,21 @@
 # tests/conftest.py
 #
-# PURPOSE: Shared setup that pytest runs BEFORE any test file is loaded.
+# PURPOSE: Settings that apply to EVERY test, applied before any test file is imported.
+# pytest loads this file automatically.
 #
-# THE PROBLEM THIS SOLVES: our app reads its settings from your personal .env file. If that
-# file contains CYBERGPT_ACCESS_PASSWORD=something (you do this to try the password gate on
-# your laptop), then EVERY test that talks to the app gets "401 Unauthorized" and fails,
-# even though the code is fine. Tests must give the same result on every computer, whatever
-# is in anyone's .env.
-#
-# THE FIX: real environment variables beat the .env file, so we set the password to empty
-# (meaning "no password") for the whole test run. Tests that WANT a password (test_access.py)
-# pass one explicitly, and that still works.
-#
-# This must happen at the very top of the file, before the app is imported by test files,
-# because the app reads its settings the first time it is imported.
+# WHY: your real `.env` file holds real settings (a Groq key, an access password...). Tests
+# must never depend on them, and must never talk to the real AI. Environment variables beat
+# the `.env` file, so setting them here makes every test run in the same safe, predictable
+# situation, whatever is in your `.env`.
 
 import os
 
+# No password gate, so tests do not get "401 Unauthorized" because YOUR .env has a password.
 os.environ["CYBERGPT_ACCESS_PASSWORD"] = ""
+
+# Never contact a real AI service from a test (it would be slow, cost quota and fail offline).
+os.environ["CYBERGPT_LLM_PROVIDER"] = "fake"
+
+# Step 4: do not make the extra "suggest search keywords" AI call in tests unless a test asks
+# for it on purpose (the rewrite tests pass their own settings).
+os.environ["CYBERGPT_RAG_REWRITE"] = "false"

@@ -5,11 +5,15 @@
 #   GET  /modes        -> "which modes can the user pick?" (NEW in Step 2A)
 #   POST /chat         -> "here is a conversation, give me the AI's full reply"
 #   POST /chat/stream  -> same, but the reply arrives word by word (NEW in Step 2A)
+#
+# NEW IN STEP 4: both chat routes first look the question up in the knowledge base
+# (app/rag), give the AI the matching passages, and send the sources back with the reply.
 
 from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from dataclasses import asdict
 from functools import lru_cache
 
 # APIRouter groups routes together. Depends lets FastAPI hand ready-made objects to our
@@ -17,16 +21,21 @@ from functools import lru_cache
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from app.api.knowledge_routes import get_search_index
 from app.api.schemas import (
     ChatRequest,
     ChatResponse,
     HealthResponse,
     LLMHealth,
     ModeInfo,
+    Source,
+    SourcesInfo,
 )
 from app.config import Settings, get_settings
+from app.knowledge import SearchIndex
 from app.llm import ChatMessage, LLMError, LLMProvider, build_provider
 from app.modes import MODES, build_system_prompt
+from app.rag import Retrieval, build_sources_block, retrieve, source_cards
 
 router = APIRouter()
 
@@ -39,7 +48,26 @@ def get_provider() -> LLMProvider:
     return build_provider(get_settings())
 
 
-def build_messages(req: ChatRequest) -> list[ChatMessage]:
+def look_up(
+    req: ChatRequest,
+    provider: LLMProvider,
+    index: SearchIndex,
+    settings: Settings,
+) -> Retrieval | None:
+    """Search the knowledge base for the latest question. Returns None when RAG is off."""
+    if not settings.rag_enabled:
+        return None
+    history = [(m.role, m.content) for m in req.messages]
+    return retrieve(
+        index,
+        provider,
+        history,
+        rewrite=settings.rag_rewrite,
+        max_sources=settings.rag_max_sources,
+    )
+
+
+def build_messages(req: ChatRequest, retrieval: Retrieval | None = None) -> list[ChatMessage]:
     """Turn the user's request into the full conversation we send to the AI.
 
     Both /chat and /chat/stream use this, so they always behave identically.
@@ -47,9 +75,29 @@ def build_messages(req: ChatRequest) -> list[ChatMessage]:
     # Start with OUR hidden rules (base safety rules + the chosen mode's instructions),
     # then add the user's messages after it. Users can't send "system" messages
     # (see schemas.py), so they cannot replace these rules.
-    messages = [ChatMessage("system", build_system_prompt(req.mode))]
+    system = build_system_prompt(req.mode)
+
+    # NEW in Step 4: when we searched the knowledge base, the passages we found (and the
+    # rules for citing them) are appended to the hidden instructions for THIS question.
+    if retrieval is not None:
+        system = f"{system}\n{build_sources_block(retrieval)}"
+
+    messages = [ChatMessage("system", system)]
     messages += [ChatMessage(m.role, m.content) for m in req.messages]
     return messages
+
+
+def knowledge_info(retrieval: Retrieval | None) -> SourcesInfo:
+    """The sources part of the reply, in the shape the web page expects."""
+    if retrieval is None:
+        return SourcesInfo(enabled=False)
+    return SourcesInfo(
+        enabled=True,
+        sources=[Source(**asdict(card)) for card in source_cards(retrieval.hits)],
+        ids_not_found=retrieval.ids_not_found,
+        searched=retrieval.searched,
+        keywords=retrieval.keywords,
+    )
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -97,15 +145,23 @@ def list_modes() -> list[ModeInfo]:
 def chat(
     req: ChatRequest,  # FastAPI checks the incoming data against ChatRequest automatically
     provider: LLMProvider = Depends(get_provider),
+    index: SearchIndex = Depends(get_search_index),
+    settings: Settings = Depends(get_settings),
 ) -> ChatResponse:
+    retrieval = look_up(req, provider, index, settings)
     try:
-        result = provider.chat(build_messages(req), temperature=req.temperature)
+        result = provider.chat(build_messages(req, retrieval), temperature=req.temperature)
     except LLMError as exc:
         # 502 "Bad Gateway" means: our server is fine, but the server behind it
         # (the AI model) failed. The message tells the user what to check.
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    return ChatResponse(reply=result.content, model=result.model, provider=result.provider)
+    return ChatResponse(
+        reply=result.content,
+        model=result.model,
+        provider=result.provider,
+        knowledge=knowledge_info(retrieval),
+    )
 
 
 def sse_event(payload: dict) -> str:
@@ -118,17 +174,24 @@ def sse_event(payload: dict) -> str:
 def chat_stream(
     req: ChatRequest,
     provider: LLMProvider = Depends(get_provider),
+    index: SearchIndex = Depends(get_search_index),
+    settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
-    messages = build_messages(req)
+    retrieval = look_up(req, provider, index, settings)
+    messages = build_messages(req, retrieval)
+    info = knowledge_info(retrieval)
 
     # A generator: each `yield` sends one small message to the browser immediately.
-    # Three kinds of messages are sent:
+    # Four kinds of messages are sent:
+    #   {"type": "sources", ...}           (NEW in Step 4) the knowledge-base passages the AI
+    #                                      was given; always the FIRST message
     #   {"type": "token", "text": "..."}   a piece of the answer
     #   {"type": "done", ...}              the answer is complete
     #   {"type": "error", "message": "..."} something failed
     # WHY an "error" message instead of an HTTP error code? Once streaming has started the
     # HTTP status (200) has already been sent, so errors have to travel inside the stream.
     def event_stream() -> Iterator[str]:
+        yield sse_event({"type": "sources", **info.model_dump()})
         try:
             for piece in provider.chat_stream(messages, temperature=req.temperature):
                 yield sse_event({"type": "token", "text": piece})

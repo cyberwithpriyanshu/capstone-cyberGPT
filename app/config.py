@@ -61,6 +61,19 @@ class Settings(BaseSettings):
     # asks for it before showing anything.
     access_password: str = ""
 
+    
+    # NEW in Step 4: the knowledge base is now used when answering.
+    #  - rag_enabled:     look up passages in the knowledge base before the AI answers.
+    #                     Set to false to get plain chat back (handy to compare answers).
+    #  - rag_rewrite:     first ask the AI for better search keywords ("log4shell" -> "Apache
+    #                     Log4j2 remote code execution"). It costs one extra small AI call
+    #                     per message; turn it off if you hit your free-quota limit.
+    #  - rag_max_sources: the most passages we hand to the AI (1 to 8). More passages give
+    #                     more material but make every answer slower and less focused.
+    rag_enabled: bool = True
+    rag_rewrite: bool = True
+    rag_max_sources: int = 4
+
 
 # lru_cache means "remember the result". The first call creates the Settings object
 # (and reads .env). Every later call reuses it instead of re-reading the file.
