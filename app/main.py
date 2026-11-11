@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import router
 from app.config import Settings, get_settings
 from app.security import AccessGate
+from app.api.knowledge_routes import router as knowledge_router
 
 # The folder holding the web page files (index.html, style.css, app.js, markdown.js).
 # __file__ is this file's own location, so this works no matter where you run the app from.
@@ -57,6 +58,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Plug in the routes we defined in app/api/routes.py (/health, /modes, /chat, /chat/stream).
     application.include_router(router)
+
+    
+    # NEW in Step 3: /knowledge/stats and /knowledge/search (look inside the knowledge base).
+    application.include_router(knowledge_router)
 
     # Everything inside app/static is available under the address /static/...
     # For example app/static/style.css is served at /static/style.css.

@@ -1,28 +1,13 @@
-# .gitignore
-#
-# PURPOSE: Tells Git which files to NEVER upload to GitHub.
-#
-# MOST IMPORTANT LINE: ".env". That file holds your secret Groq API key. If a key is ever
-# uploaded to GitHub, treat it as stolen (bots scan GitHub for keys within minutes) and
-# create a new one. Keeping .env out of Git prevents that.
+# Each line below is a "library" (code written by other people) that our project uses.
+# ">=" means "this version or newer". You install all of them with one command later.
 
-# Secrets and local settings (use .env.example to show teammates which settings exist)
-.env
-.env.*
-!.env.example
-
-# Python's virtual environment folders (big, and each person creates their own)
-venv/
-.venv/
-env/
-
-# Files Python and pytest create automatically
-__pycache__/
-*.pyc
-.pytest_cache/
-
-# Editor and operating-system clutter
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
+# The web framework: lets us create web addresses like /chat and /health
+fastapi>=0.110
+# The web server that actually runs our FastAPI app
+uvicorn[standard]>=0.29
+# Lets our code send requests over the internet/network (we use it to talk to the AI model)
+httpx>=0.27
+# Checks that data has the right shape (FastAPI uses it to validate requests)
+pydantic>=2.6
+# Reads our settings from the .env file
+pydantic-settings>=2.2

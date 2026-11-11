@@ -60,6 +60,10 @@ def test_root_points_to_docs(client):
 
     assert r.status_code == 200
     assert r.json()["docs"] == "/docs"
+    r = client.get("/")
+
+    assert r.status_code == 200
+    assert r.json()["docs"] == "/docs"
 
 
 def test_health_ok(client):
