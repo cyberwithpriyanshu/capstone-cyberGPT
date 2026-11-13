@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 from app.knowledge.search import ID_PATTERN, Hit, SearchIndex, tokenize
@@ -37,8 +38,22 @@ RELATIVE_CUTOFF = 0.45  # ...and score at least 45% of the best passage, so we d
 # are still taken from the WHOLE message so a pasted CVE list is not lost.
 MAX_SEARCH_CHARS = 400
 
-# A follow-up this short probably leans on the previous question ("and how do I fix it?").
+# A follow-up this short MAY lean on the previous question ("and how do I fix it?")...
 SHORT_FOLLOWUP_WORDS = 4
+
+# ...but only if it also LOOKS like a follow-up. A short message with no such cue ("tell me a
+# joke", "what is XSS") is a brand-new question, and borrowing the previous question for it would
+# drag in the old topic. (A real bug found in testing: after asking about CVE-1999-0001, the
+# question "tell me a joke" was wrongly reported as being about CVE-1999-0001.)
+FOLLOWUP_CUES = re.compile(
+    r"\b(it|its|this|that|these|those|they|them|one|ones|above|earlier|previous|same|"
+    r"also|more|another|else|instead)\b|^\s*(and|but|so|then|what about|how about)\b",
+    re.IGNORECASE,
+)
+
+# The extra "ask the AI for better keywords" call costs time and free-quota tokens, so we make
+# it only when the plain search did NOT already find a well-matching passage.
+GOOD_ENOUGH_COVERAGE = 0.70
 
 
 @dataclass(frozen=True)
@@ -59,7 +74,11 @@ def search_text_for(history: list[tuple[str, str]]) -> str:
     text = latest[:MAX_SEARCH_CHARS]
 
     # A short follow-up borrows the previous question so the topic is not lost.
-    if len(tokenize(latest)) <= SHORT_FOLLOWUP_WORDS and len(user_turns) > 1:
+    if (
+        len(user_turns) > 1
+        and len(tokenize(latest)) <= SHORT_FOLLOWUP_WORDS
+        and FOLLOWUP_CUES.search(latest)
+    ):
         text = f"{user_turns[-2][:MAX_SEARCH_CHARS]} {text}"
 
     # Official IDs anywhere in the latest message always count, even past the cut-off.
@@ -108,9 +127,15 @@ def retrieve(
         merged = {h.chunk.id: h for h in first.hits}
 
         # Then, if allowed, with the AI's keywords. Skipped when the question already holds
-        # an official ID: that is an exact lookup and keywords would only add noise.
+        # an official ID (an exact lookup; keywords would only add noise) and when the plain
+        # search already found a passage that covers the question well (saves a whole AI call).
         keywords = ""
-        if rewrite and provider is not None and not first.ids_in_query:
+        good_already = any(
+            h.coverage >= GOOD_ENOUGH_COVERAGE
+            for h in select_hits(first.hits, max_sources)
+            if not h.exact_id
+        )
+        if rewrite and provider is not None and not first.ids_in_query and not good_already:
             keywords = rewrite_query(provider, history) or ""
             if keywords:
                 for h in index.search(keywords, limit=pool).hits:
@@ -118,11 +143,20 @@ def retrieve(
                     if h.chunk.id not in merged or h.score > merged[h.chunk.id].score:
                         merged[h.chunk.id] = h
 
+        # "Not in our sources" warnings are only for IDs in the user's LATEST message. An ID
+        # from an earlier question (or borrowed for a follow-up) must not reappear forever.
+        latest = [t for role, t in history if role == "user"][-1]
+        latest_ids: list[str] = []
+        for found in ID_PATTERN.findall(latest):
+            if found.upper() not in latest_ids:
+                latest_ids.append(found.upper())
+        ids_not_found = [i for i in latest_ids if not index.lookup(i)]
+
         chosen = select_hits(list(merged.values()), max_sources)
         return Retrieval(
             searched=text,
             hits=chosen,
-            ids_not_found=first.ids_not_found,
+            ids_not_found=ids_not_found,
             keywords=keywords,
         )
     except Exception:  # noqa: BLE001 - retrieval is a bonus; it must never break chat

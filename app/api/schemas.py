@@ -90,6 +90,8 @@ class ChatResponse(BaseModel):
     provider: str  # which backend was used
     # NEW in Step 4. Optional with a default, so older callers keep working.
     knowledge: SourcesInfo = SourcesInfo()
+    # NEW: True when the model hit its length limit and the reply is cut off mid-way.
+    truncated: bool = False
 
 
 class ModeInfo(BaseModel):

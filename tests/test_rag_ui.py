@@ -33,3 +33,14 @@ def test_stylesheet_has_the_source_styles():
     css = get("/static/style.css")
     for selector in (".cite", ".sources", ".source-warn", ".source-n"):
         assert selector in css
+
+def test_a_line_break_tag_from_the_ai_becomes_a_real_line_break():
+    # Models write <br> inside table cells. Only this one tag is allowed back in, and only
+    # after everything else has been escaped.
+    js = get("/static/markdown.js")
+    assert "&lt;br" in js and '"<br>"' in js
+
+
+def test_a_cut_off_reply_is_flagged_on_the_page():
+    js = get("/static/app.js")
+    assert "truncated" in js and "length limit" in js

@@ -22,6 +22,7 @@ from app.llm.base import (
     LLMProvider,
     LLMResponse,
     ProviderHealth,
+    TextStream,
 )
 
 
@@ -122,6 +123,8 @@ class OpenAICompatProvider(LLMProvider):
         try:
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
+            # "length" = the model stopped because it hit max_tokens, not because it was done.
+            truncated = data["choices"][0].get("finish_reason") == "length"
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise LLMError("Unexpected response format from the LLM server") from exc
 
@@ -132,6 +135,7 @@ class OpenAICompatProvider(LLMProvider):
             content=content.strip(),  # strip() removes stray spaces/newlines at the ends
             model=str(data.get("model") or self.model),
             provider=self.name,
+            truncated=truncated,
         )
 
     # ---------- streaming chat ----------
@@ -142,9 +146,14 @@ class OpenAICompatProvider(LLMProvider):
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
-    ) -> Iterator[str]:
+    ) -> TextStream:
         payload = self._build_payload(messages, temperature, max_tokens, stream=True)
+        # The caller loops over this like any iterator of text. When the loop ends,
+        # stream.truncated tells whether the model was cut off by the length limit.
+        stream = TextStream()
+        return stream.attach(self._stream_pieces(payload, stream))
 
+    def _stream_pieces(self, payload: dict, stream: TextStream) -> Iterator[str]:
         try:
             # client.stream(...) keeps the connection open and lets us read the reply
             # line by line while the model is still writing it.
@@ -170,17 +179,21 @@ class OpenAICompatProvider(LLMProvider):
 
                     try:
                         chunk = json.loads(data)
-                        piece = chunk["choices"][0]["delta"].get("content")
+                        choice = chunk["choices"][0]
+                        piece = choice["delta"].get("content")
+                        finish = choice.get("finish_reason")
                     except (ValueError, KeyError, IndexError, TypeError, AttributeError):
                         continue  # ignore any line we don't understand instead of crashing
 
+                    if finish == "length":
+                        stream.truncated = True  # cut off by the length limit (see TextStream)
                     if piece:
                         yield piece
         except httpx.TimeoutException as exc:
             raise self._timeout_error() from exc
         except httpx.HTTPError as exc:
             raise self._unreachable_error(exc) from exc
-
+    
     # ---------- health check ----------
 
     def health(self) -> ProviderHealth:

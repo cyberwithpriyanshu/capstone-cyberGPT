@@ -42,6 +42,31 @@ class LLMResponse:
     content: str  # the model's answer
     model: str  # which model answered
     provider: str  # which backend was used (e.g. "openai_compat" or "fake")
+    # NEW in Step 4: True when the model ran out of its allowed length (max_tokens) and the
+    # answer was cut off in the middle. The page then tells the reader, instead of showing a
+    # half-finished answer as if it were complete.
+    truncated: bool = False
+
+
+class TextStream:
+    """The pieces of a streamed answer, plus a note about HOW the answer ended.
+
+    You use it exactly like any iterator of text:   for piece in stream: ...
+    After the loop, `stream.truncated` says whether the model was cut off by the length limit.
+    (Each call to chat_stream() gets its OWN TextStream, so two people chatting at the same
+    time can never mix up each other's result.)
+    """
+
+    def __init__(self) -> None:
+        self.truncated = False
+        self._source: Iterator[str] = iter(())
+
+    def attach(self, source: Iterator[str]) -> "TextStream":
+        self._source = source
+        return self
+
+    def __iter__(self) -> Iterator[str]:
+        return self._source
 
 
 @dataclass(frozen=True)

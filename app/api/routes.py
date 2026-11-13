@@ -161,6 +161,7 @@ def chat(
         model=result.model,
         provider=result.provider,
         knowledge=knowledge_info(retrieval),
+        truncated=result.truncated,
     )
 
 
@@ -186,19 +187,27 @@ def chat_stream(
     #   {"type": "sources", ...}           (NEW in Step 4) the knowledge-base passages the AI
     #                                      was given; always the FIRST message
     #   {"type": "token", "text": "..."}   a piece of the answer
-    #   {"type": "done", ...}              the answer is complete
+    #   {"type": "done", ...}              the answer is complete (with "truncated": true if
+    #                                      the model was cut off by its length limit)
     #   {"type": "error", "message": "..."} something failed
     # WHY an "error" message instead of an HTTP error code? Once streaming has started the
     # HTTP status (200) has already been sent, so errors have to travel inside the stream.
     def event_stream() -> Iterator[str]:
         yield sse_event({"type": "sources", **info.model_dump()})
+        stream = None
         try:
-            for piece in provider.chat_stream(messages, temperature=req.temperature):
+            stream = provider.chat_stream(messages, temperature=req.temperature)
+            for piece in stream:
                 yield sse_event({"type": "token", "text": piece})
         except LLMError as exc:
             yield sse_event({"type": "error", "message": str(exc)})
             return
-        yield sse_event({"type": "done", "model": provider.model, "provider": provider.name})
+        done = {"type": "done", "model": provider.model, "provider": provider.name}
+        # Only mentioned when true, so a normal "done" message looks exactly as before.
+        # Plain generators (like our test fakes) have no such note: treated as complete.
+        if getattr(stream, "truncated", False):
+            done["truncated"] = True
+        yield sse_event(done)
 
     return StreamingResponse(
         event_stream(),

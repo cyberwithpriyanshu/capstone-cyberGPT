@@ -39,6 +39,11 @@
     // 2. Escape everything, so no HTML from the AI survives.
     s = escapeHtml(s);
 
+    // 2b. Models often write <br> to start a new line inside a table cell. We never let the
+    //     AI's HTML through, but a line break is harmless, so this ONE tag is allowed back
+    //     in (matched only in its escaped form, so nothing else can sneak through).
+    s = s.replace(/&lt;br\s*\/?&gt;/gi, "<br>");
+
     // 3. Links. Only http, https and mailto addresses are turned into links.
     s = s.replace(
       /\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,

@@ -584,6 +584,7 @@
   }
 
   // Reads the streamed answer. `onToken` is called for every piece of text.
+  // Returns true when the model hit its length limit (the reply is cut off).
   async function streamChat(signal, onToken, onSources) {
     let res;
     try {
@@ -602,6 +603,7 @@
     const decoder = new TextDecoder();
     let buffer = "";
     let finished = false;
+    let truncated = false; // true if the model hit its length limit (the reply is cut off)
 
     while (true) {
       let chunk;
@@ -628,14 +630,13 @@
         if (event.type === "sources") onSources(event);
         else if (event.type === "token") onToken(event.text);
         else if (event.type === "error") throw new ApiError(event.message, "model");
-        else if (event.type === "done") finished = true;
+        else if (event.type === "done") { finished = true; truncated = !!event.truncated; }
       }
     }
     if (!finished) throw new ApiError("The reply was cut off before it finished.", "network");
+    return truncated;
   }
 
-  // The non-streaming route. Used only as a fallback when streaming is blocked
-  // (some proxies and tunnels do not allow streamed replies).
   async function plainChat(signal) {
     let res;
     try {
@@ -684,11 +685,12 @@
 
     let text = "";
     let outcome = "done"; // "done", "stopped" or "error"
+    let truncated = false; // the model hit its length limit: the reply is cut off
     let errorMessage = "";
 
     try {
       try {
-        await streamChat(
+        truncated = await streamChat(
           controller.signal,
           (piece) => {
             text += piece;
@@ -703,6 +705,7 @@
         const data = await plainChat(controller.signal);
         text = data.reply;
         bot.knowledge = data.knowledge || null;
+        truncated = !!data.truncated;
       }
     } catch (err) {
       if (err && err.name === "AbortError") {
@@ -729,8 +732,12 @@
       checkHealth(); // the status light may now be out of date
     } else if (text) {
       state.messages.push({ role: "assistant", content: text });
-      // The note goes BEFORE the buttons row, so it sits right under the text.
+      // The notes go BEFORE the buttons row, so they sit right under the text.
       if (outcome === "stopped") bot.body.insertBefore(make("p", "note", "Reply stopped."), bot.actions);
+      if (truncated) {
+        bot.body.insertBefore(make("p", "note note-cut",
+          "This reply reached its length limit and was cut off. Type \u201ccontinue\u201d to get the rest."), bot.actions);
+      }
       addSources(bot, text, bot.knowledge);
       addReplyActions(bot, text);
     } else {
@@ -743,6 +750,8 @@
     announce(outcome === "error" ? "CyberGPT could not reply" : "Reply complete");
     dom.input.focus();
   }
+
+
 
   // ----------------------------------------------------------------
   // New chat
