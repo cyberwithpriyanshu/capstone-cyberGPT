@@ -1,4 +1,7 @@
+# Libraries needed only while DEVELOPING (not needed to run the app for real users).
 
+# "-r requirements.txt" means: also install everything listed in requirements.txt.
+-r requirements.txt
 
 # pytest: the tool that finds and runs our automated tests.
 pytest>=8.0
